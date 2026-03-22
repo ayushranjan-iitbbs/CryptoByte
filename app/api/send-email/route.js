@@ -14,7 +14,7 @@ export async function POST(req) {
 
      
     const { data, error } = await resend.emails.send({
-      from: 'Trading Platform <onboarding@resend.dev>',
+      from: 'Trading Platform <24MM01007@iitbbs.ac.in>',
       to: [to],
       subject: `ALERT: ${title}`,
       html: `
