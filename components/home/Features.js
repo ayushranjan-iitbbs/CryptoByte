@@ -9,18 +9,16 @@ import {
 import { useThemeStore } from "@/store/useThemeStore.js"; 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
- 
 const Candlestick = (props) => {
   const { x, y, width, height, low, high, open, close } = props;
   const isUp = close >= open;
-   
+  
   const color = isUp ? "#02c076" : "#f84960"; 
 
   const ratio = Math.abs(height / (Math.max(Math.abs(open - close), 0.0001)));
   const wickTop = y + (open - high) * ratio;
   const wickBottom = y + (open - low) * ratio;
 
- 
   const bodyWidth = Math.max(width * 0.8, 1); 
   const bodyX = x + (width - bodyWidth) / 2;
 
@@ -53,7 +51,7 @@ export default function Features({ isDashboard = false, onTrade }) {
   const [activeSymbol, setActiveSymbol] = useState("BTCUSDT");
   const [marketData, setMarketData] = useState({ tickerData: [], chartData: [] });
   const [user, setUser] = useState(null); 
-   
+    
   const [chartType, setChartType] = useState("area"); 
   const [zoomData, setZoomData] = useState(null);
   const [refAreaLeft, setRefAreaLeft] = useState("");
@@ -61,6 +59,12 @@ export default function Features({ isDashboard = false, onTrade }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   
+  // LIVE FEATURE STATES
+  const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [secondsAgo, setSecondsAgo] = useState(0);
+  const [priceFlash, setPriceFlash] = useState(null); // 'up', 'down', or null
+  const prevPriceRef = useRef(null);
+
   const itemsPerPage = 10; 
   const chartRef = useRef(null);
 
@@ -79,13 +83,31 @@ export default function Features({ isDashboard = false, onTrade }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Seconds ago timer
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSecondsAgo(Math.floor((new Date() - lastUpdated) / 1000));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [lastUpdated]);
+
   // Data Fetching
   useEffect(() => {
     const fetchData = async () => {
       try {
         const res = await fetch(`/api/crypto?symbol=${activeSymbol}`);
         const data = await res.json();
+        
+        // Handle Price Flash Logic
+        const newPrice = data.chartData[data.chartData.length - 1]?.close;
+        if (prevPriceRef.current !== null && newPrice !== prevPriceRef.current) {
+          setPriceFlash(newPrice > prevPriceRef.current ? "up" : "down");
+          setTimeout(() => setPriceFlash(null), 1000); 
+        }
+        prevPriceRef.current = newPrice;
+
         setMarketData(data);
+        setLastUpdated(new Date());
       } catch (error) {
         console.error("Refresh failed:", error);
       }
@@ -152,6 +174,12 @@ export default function Features({ isDashboard = false, onTrade }) {
           <div className="flex justify-between items-center p-4 md:p-5 border-b border-inherit">
             <div className="flex flex-col">
               <div className="flex items-center gap-3">
+                {/* LIVE PULSE INDICATOR */}
+                <div className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </div>
+
                 <h1 className="text-xl md:text-2xl font-black tracking-tight opacity-90 uppercase">
                   {activeSymbol.replace("USDT", "")} / USDT
                 </h1>
@@ -172,15 +200,22 @@ export default function Features({ isDashboard = false, onTrade }) {
                   </button>
                 </div>
               </div>
-              {zoomData && (
-                <button onClick={resetZoom} className="text-[10px] mt-1 text-yellow-500 hover:underline font-bold uppercase tracking-tighter text-left">
-                  Reset Zoom ↺
-                </button>
-              )}
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-tighter">Live Connection</span>
+                <span className="text-[9px] opacity-30 font-mono italic">Updated {secondsAgo}s ago</span>
+                {zoomData && (
+                  <button onClick={resetZoom} className="text-[10px] text-yellow-500 hover:underline font-bold uppercase tracking-tighter">
+                    • Reset Zoom ↺
+                  </button>
+                )}
+              </div>
             </div>
             <div className="text-right">
               <p className="text-[9px] font-bold opacity-30 uppercase tracking-tighter">Current Market Price</p>
-              <p className="text-lg md:text-2xl font-mono font-bold text-yellow-500 tabular-nums">
+              <p className={`text-lg md:text-2xl font-mono font-bold transition-all duration-500 tabular-nums ${
+                priceFlash === 'up' ? "text-emerald-500 scale-105" : 
+                priceFlash === 'down' ? "text-red-500 scale-105" : "text-yellow-500"
+              }`}>
                 ${currentChartSource[currentChartSource.length - 1]?.close.toLocaleString() || "---"}
               </p>
             </div>
@@ -210,7 +245,6 @@ export default function Features({ isDashboard = false, onTrade }) {
                 {chartType === "area" ? (
                   <Area type="monotone" dataKey="close" stroke="#FFD700" strokeWidth={2} fill="url(#glassYellow)" isAnimationActive={false} />
                 ) : (
-                 
                   <>
                     <Bar dataKey="close" shape={<Candlestick />} isAnimationActive={false} />
                     <Area 
@@ -264,8 +298,18 @@ export default function Features({ isDashboard = false, onTrade }) {
                   return (
                     <tr key={coin.symbol} className={`group hover:bg-yellow-500/5 transition-colors ${isActive ? "bg-yellow-500/[0.05]" : ""}`}>
                       <td className="p-4 text-center opacity-30 font-mono text-[10px]">{(currentPage - 1) * itemsPerPage + index + 1}</td>
-                      <td className="p-4 font-black tracking-tight">{coin.symbol.replace("USDT", "")}</td>
-                      <td className="p-4 text-right font-mono font-bold tabular-nums">${parseFloat(coin.lastPrice).toLocaleString()}</td>
+                      <td className="p-4 font-black tracking-tight">
+                        <div className="flex items-center gap-2">
+                          {isActive && <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />}
+                          {coin.symbol.replace("USDT", "")}
+                        </div>
+                      </td>
+                      <td className={`p-4 text-right font-mono font-bold tabular-nums transition-colors duration-500 ${
+                        isActive && priceFlash === 'up' ? "text-emerald-500" : 
+                        isActive && priceFlash === 'down' ? "text-red-500" : ""
+                      }`}>
+                        ${parseFloat(coin.lastPrice).toLocaleString()}
+                      </td>
                       <td className={`p-4 text-right font-bold tabular-nums ${isUp ? "text-emerald-500" : "text-red-500"}`}>
                         {isUp ? "▲" : "▼"} {Math.abs(coin.priceChangePercent)}%
                       </td>
