@@ -14,9 +14,9 @@ export async function POST(req) {
 
      
     const { data, error } = await resend.emails.send({
-      from: 'Trading Platform <onboarding@resend.dev>',
+      from: 'Trading Platform <markhypedevelopers@gmail.com>',
       to: [to],
-      subject: `ALRT: ${title}`,
+      subject: `ALERT: ${title}`,
       html: `
         <div style="font-family: monospace; background: #050505; color: white; padding: 20px; border: 1px solid #333;">
           <h2 style="color: #eab308; border-bottom: 1px solid #333; padding-bottom: 10px; text-transform: uppercase;">${title}</h2>
