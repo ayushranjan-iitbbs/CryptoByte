@@ -36,6 +36,10 @@ export default function Dashboard() {
   const [sellModal, setSellModal] = useState({ open: false, pos: null });
   const [sellAmountInput, setSellAmountInput] = useState("");
 
+  // Loading states for buttons
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [isSettling, setIsSettling] = useState(false);
+
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
 
@@ -99,9 +103,7 @@ export default function Dashboard() {
     setLoading(false);
   };
 
-   
   const triggerAlert = async (title, message, type = "SYSTEM") => {
-   
     await supabase.from("notifications").insert([{
       user_id: userMetadata.id,
       title,
@@ -109,7 +111,6 @@ export default function Dashboard() {
       type
     }]);
 
-    // 2. Send Real Email
     try {
       const response = await fetch("/api/send-email", { 
         method: "POST", 
@@ -160,7 +161,7 @@ export default function Dashboard() {
       const { error: tradeError } = await supabase.from("trades").delete().eq("user_id", userMetadata.id);
       if (profileError || tradeError) throw new Error("Database update failed");
 
-      await triggerAlert("System Reset", "Your account balances have been reset to initial capital.", "SYSTEM");
+      triggerAlert("System Reset", "Your account balances have been reset to initial capital.", "SYSTEM");
       await initDashboard();
       alert("System recalibrated. Initial capital restored.");
     } catch (err) {
@@ -190,28 +191,35 @@ export default function Dashboard() {
     if (!qty || qty <= 0) return alert("Invalid Qty");
     if (balances[walletKey] < totalCost) return alert("Insufficient Balance");
 
-    const { error: tradeError } = await supabase.from("trades").insert([{
-      user_id: userMetadata.id, symbol: tradeModal.coin.symbol,
-      type: tradeModal.wallet === 'FUTURES' ? tradeModal.side : 'SPOT BUY',
-      price: tradeModal.coin.price, amount: qty,
-      wallet_type: tradeModal.wallet, status: 'OPEN',
-      created_at: new Date().toISOString()
-    }]);
+    setIsExecuting(true);
+    try {
+      const { error: tradeError } = await supabase.from("trades").insert([{
+        user_id: userMetadata.id, symbol: tradeModal.coin.symbol,
+        type: tradeModal.wallet === 'FUTURES' ? tradeModal.side : 'SPOT BUY',
+        price: tradeModal.coin.price, amount: qty,
+        wallet_type: tradeModal.wallet, status: 'OPEN',
+        created_at: new Date().toISOString()
+      }]);
 
-    if (!tradeError) {
-      const newBalance = balances[walletKey] - totalCost;
-      await supabase.from("profiles").update({ [`${walletKey}_balance`]: newBalance }).eq("id", userMetadata.id);
-      
-      await triggerAlert(
-        "Trade Opened", 
-        `Successfully bought ${qty} ${tradeModal.coin.symbol} at $${tradeModal.coin.price}. Total: $${totalCost.toFixed(2)}`,
-        "BUY"
-      );
+      if (!tradeError) {
+        const newBalance = balances[walletKey] - totalCost;
+        await supabase.from("profiles").update({ [`${walletKey}_balance`]: newBalance }).eq("id", userMetadata.id);
+        
+         triggerAlert(
+          "Trade Opened", 
+          `Successfully bought ${qty} ${tradeModal.coin.symbol} at $${tradeModal.coin.price}. Total: $${totalCost.toFixed(2)}`,
+          "BUY"
+        );
 
-      setBalances(prev => ({ ...prev, [walletKey]: newBalance }));
-      setTradeModal({ open: false, coin: null });
-      setAmountInput("");
-      initDashboard();
+        setBalances(prev => ({ ...prev, [walletKey]: newBalance }));
+        setTradeModal({ open: false, coin: null });
+        setAmountInput("");
+        await initDashboard();
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsExecuting(false);
     }
   };
 
@@ -220,39 +228,46 @@ export default function Dashboard() {
     const pos = sellModal.pos;
     if (!sellQty || sellQty <= 0 || sellQty > pos.amount) return alert("Invalid Qty");
 
-    const currentMarkPrice = livePrices[pos.symbol] || pos.price;
-    const pnl = calculatePnL(pos, currentMarkPrice);
-    const walletKey = pos.wallet_type === 'SPOT' ? 'spot' : 'futures';
-    const saleRevenue = (sellQty * pos.price) + parseFloat(pnl.val);
+    setIsSettling(true);
+    try {
+      const currentMarkPrice = livePrices[pos.symbol] || pos.price;
+      const pnl = calculatePnL(pos, currentMarkPrice);
+      const walletKey = pos.wallet_type === 'SPOT' ? 'spot' : 'futures';
+      const saleRevenue = (sellQty * pos.price) + parseFloat(pnl.val);
 
-    let error = null;
-    if (sellQty === pos.amount) {
-        const { error: err } = await supabase.from("trades").update({ status: 'CLOSED', exit_price: currentMarkPrice, closed_at: new Date().toISOString() }).eq("id", pos.id);
-        error = err;
-    } else {
-        const { error: err1 } = await supabase.from("trades").update({ amount: pos.amount - sellQty }).eq("id", pos.id);
-        const { error: err2 } = await supabase.from("trades").insert([{
-            user_id: userMetadata.id, symbol: pos.symbol, type: pos.type,
-            price: pos.price, wallet_type: pos.wallet_type, amount: sellQty,
-            status: 'CLOSED', exit_price: currentMarkPrice,
-            created_at: pos.created_at, closed_at: new Date().toISOString()
-        }]);
-        error = err1 || err2;
-    }
+      let error = null;
+      if (sellQty === pos.amount) {
+          const { error: err } = await supabase.from("trades").update({ status: 'CLOSED', exit_price: currentMarkPrice, closed_at: new Date().toISOString() }).eq("id", pos.id);
+          error = err;
+      } else {
+          const { error: err1 } = await supabase.from("trades").update({ amount: pos.amount - sellQty }).eq("id", pos.id);
+          const { error: err2 } = await supabase.from("trades").insert([{
+              user_id: userMetadata.id, symbol: pos.symbol, type: pos.type,
+              price: pos.price, wallet_type: pos.wallet_type, amount: sellQty,
+              status: 'CLOSED', exit_price: currentMarkPrice,
+              created_at: pos.created_at, closed_at: new Date().toISOString()
+          }]);
+          error = err1 || err2;
+      }
 
-    if (!error) {
-        const newBalance = balances[walletKey] + saleRevenue;
-        await supabase.from("profiles").update({ [`${walletKey}_balance`]: newBalance }).eq("id", userMetadata.id);
-        
-        await triggerAlert(
-          "Position Settled", 
-          `Closed ${sellQty} of ${pos.symbol} at $${currentMarkPrice.toFixed(2)}. PnL: ${pnl.val} USDT.`,
-          "SELL"
-        );
+      if (!error) {
+          const newBalance = balances[walletKey] + saleRevenue;
+          await supabase.from("profiles").update({ [`${walletKey}_balance`]: newBalance }).eq("id", userMetadata.id);
+          
+           triggerAlert(
+            "Position Settled", 
+            `Closed ${sellQty} of ${pos.symbol} at $${currentMarkPrice.toFixed(2)}. PnL: ${pnl.val} USDT.`,
+            "SELL"
+          );
 
-        setBalances(prev => ({ ...prev, [walletKey]: newBalance }));
-        setSellModal({ open: false, pos: null });
-        initDashboard();
+          setBalances(prev => ({ ...prev, [walletKey]: newBalance }));
+          setSellModal({ open: false, pos: null });
+          await initDashboard();
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsSettling(false);
     }
   };
 
@@ -349,8 +364,9 @@ export default function Dashboard() {
                 </div>
             </div>
 
-            <div className={`rounded-sm border overflow-hidden ${isDark ? "bg-[#0d0d0d] border-white/10" : "bg-white border-slate-200 shadow-sm"}`}>
-                <table className="w-full text-[11px] font-mono text-left">
+            {/* Horizontal Scroll Wrapper */}
+            <div className={`rounded-sm border overflow-x-auto ${isDark ? "bg-[#0d0d0d] border-white/10" : "bg-white border-slate-200 shadow-sm"}`}>
+                <table className="w-full text-[11px] font-mono text-left min-w-[600px]">
                     <thead className={`${isDark ? "bg-white/5 text-white/40" : "bg-slate-100 text-slate-500"} uppercase text-[9px] font-bold`}>
                         <tr>
                             <th className="p-4">Asset</th><th className="p-4">Entry</th><th className="p-4">Mark</th><th className="p-4">PnL (%)</th><th className="p-4 text-right">Action</th>
@@ -367,7 +383,7 @@ export default function Dashboard() {
                                     <td className="p-4 text-yellow-500 font-bold">${mark.toFixed(2)}</td>
                                     <td className={`p-4 font-black ${pnl.isPos ? 'text-emerald-500' : 'text-red-500'}`}>${pnl.val} ({pnl.percent}%)</td>
                                     <td className="p-4 text-right">
-                                        <button onClick={() => { setSellModal({ open: true, pos }); setSellAmountInput(pos.amount.toString()); }} className="bg-red-500 text-white px-4 py-1.5 rounded-sm text-[9px] font-black uppercase hover:bg-red-600 transition-all">Settle</button>
+                                        <button onClick={() => { setSellModal({ open: true, pos }); setSellAmountInput(pos.amount.toString()); }} className="bg-red-500 text-white px-4 py-1.5 rounded-sm text-[9px] font-black uppercase hover:bg-red-600 transition-all whitespace-nowrap">Settle</button>
                                     </td>
                                 </tr>
                             );
@@ -392,8 +408,10 @@ export default function Dashboard() {
                     </button>
                 </div>
             </div>
-            <div className={`rounded-sm border overflow-hidden ${isDark ? "bg-[#0d0d0d] border-white/10" : "bg-white border-slate-200 shadow-sm"}`}>
-                <table className="w-full text-[11px] font-mono text-left">
+            
+            {/* Horizontal Scroll Wrapper */}
+            <div className={`rounded-sm border overflow-x-auto ${isDark ? "bg-[#0d0d0d] border-white/10" : "bg-white border-slate-200 shadow-sm"}`}>
+                <table className="w-full text-[11px] font-mono text-left min-w-[700px]">
                     <thead className={`${isDark ? "bg-white/5 text-white/40" : "bg-slate-100 text-slate-500"} uppercase text-[8px] font-bold`}>
                       <tr><th className="p-4">Entry Time</th><th className="p-4">Exit Time</th><th className="p-4">Asset</th><th className="p-4">Entry → Exit</th><th className="p-4 text-right">PnL (%)</th></tr>
                     </thead>
@@ -441,7 +459,13 @@ export default function Dashboard() {
                     <div className="flex justify-between text-[10px] font-black uppercase opacity-40"><span>Price</span><span>${tradeModal.coin?.price}</span></div>
                     <div className="flex justify-between text-[10px] font-black uppercase text-yellow-500 border-t border-white/5 pt-2"><span>Total Cost</span><span>${((parseFloat(amountInput) || 0) * (tradeModal.coin?.price || 0)).toFixed(2)} USDT</span></div>
                 </div>
-                <button onClick={executeBuy} className="w-full bg-yellow-500 py-4 rounded-sm font-black text-black uppercase text-[11px] hover:bg-yellow-400 transition-all">Execute Order</button>
+                <button 
+                  disabled={isExecuting}
+                  onClick={executeBuy} 
+                  className={`w-full py-4 rounded-sm font-black text-black uppercase text-[11px] transition-all flex items-center justify-center gap-2 ${isExecuting ? 'bg-yellow-500/50 cursor-not-allowed' : 'bg-yellow-500 hover:bg-yellow-400'}`}
+                >
+                  {isExecuting ? <><Loader2 size={14} className="animate-spin"/> Executing Order...</> : "Execute Order"}
+                </button>
               </div>
            </div>
         </div>
@@ -463,7 +487,13 @@ export default function Dashboard() {
                             <button key={pct} onClick={() => setSellAmountInput((sellModal.pos?.amount * (pct/100)).toString())} className="py-1.5 text-[8px] font-black bg-white/5 border border-white/5 hover:border-red-500 transition-colors">{pct}%</button>
                         ))}
                     </div>
-                    <button onClick={executePartialSell} className="w-full bg-red-500 py-4 rounded-sm font-black text-white uppercase text-[11px] hover:bg-red-600 transition-all">Confirm Settle</button>
+                    <button 
+                      disabled={isSettling}
+                      onClick={executePartialSell} 
+                      className={`w-full py-4 rounded-sm font-black text-white uppercase text-[11px] transition-all flex items-center justify-center gap-2 ${isSettling ? 'bg-red-500/50 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600'}`}
+                    >
+                      {isSettling ? <><Loader2 size={14} className="animate-spin"/> Confirming Settle...</> : "Confirm Settle"}
+                    </button>
                 </div>
             </div>
         </div>
