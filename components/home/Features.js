@@ -7,7 +7,7 @@ import {
   ResponsiveContainer, Tooltip, ReferenceArea, BarChart, Bar, Cell, ComposedChart 
 } from 'recharts';
 import { useThemeStore } from "@/store/useThemeStore.js"; 
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ArrowRightLeft } from "lucide-react";
 
 const Candlestick = (props) => {
   const { x, y, width, height, low, high, open, close } = props;
@@ -24,7 +24,6 @@ const Candlestick = (props) => {
 
   return (
     <g>
-      {/* Wick (Thin Line) */}
       <line 
         x1={x + width / 2} 
         y1={wickTop} 
@@ -33,7 +32,6 @@ const Candlestick = (props) => {
         stroke={color} 
         strokeWidth={1} 
       />
-      {/* Body */}
       <rect 
         x={bodyX} 
         y={y} 
@@ -59,16 +57,14 @@ export default function Features({ isDashboard = false, onTrade }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   
-  // LIVE FEATURE STATES
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [secondsAgo, setSecondsAgo] = useState(0);
-  const [priceFlash, setPriceFlash] = useState(null); // 'up', 'down', or null
+  const [priceFlash, setPriceFlash] = useState(null); 
   const prevPriceRef = useRef(null);
 
   const itemsPerPage = 10; 
   const chartRef = useRef(null);
 
-  // Auth Sync
   useEffect(() => {
     const getSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -83,7 +79,6 @@ export default function Features({ isDashboard = false, onTrade }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Seconds ago timer
   useEffect(() => {
     const timer = setInterval(() => {
       setSecondsAgo(Math.floor((new Date() - lastUpdated) / 1000));
@@ -91,14 +86,12 @@ export default function Features({ isDashboard = false, onTrade }) {
     return () => clearInterval(timer);
   }, [lastUpdated]);
 
-  // Data Fetching
   useEffect(() => {
     const fetchData = async () => {
       try {
         const res = await fetch(`/api/crypto?symbol=${activeSymbol}`);
         const data = await res.json();
         
-        // Handle Price Flash Logic
         const newPrice = data.chartData[data.chartData.length - 1]?.close;
         if (prevPriceRef.current !== null && newPrice !== prevPriceRef.current) {
           setPriceFlash(newPrice > prevPriceRef.current ? "up" : "down");
@@ -167,6 +160,24 @@ export default function Features({ isDashboard = false, onTrade }) {
 
   return (
     <section className={`p-1 transition-all duration-300 ${isDark ? "text-gray-100" : "text-gray-900"}`}>
+      {/* ADDED: Global CSS for the sliding text and scrollbar appearance */}
+      <style jsx global>{`
+        @keyframes slideText {
+          0% { transform: translateX(100%); }
+          100% { transform: translateX(-100%); }
+        }
+        .animate-table-hint {
+          animation: slideText 12s linear infinite;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+          height: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'};
+          border-radius: 10px;
+        }
+      `}</style>
+
       <div className="max-w-7xl mx-auto space-y-6">
         
         {/* CHART TERMINAL */}
@@ -174,7 +185,6 @@ export default function Features({ isDashboard = false, onTrade }) {
           <div className="flex justify-between items-center p-4 md:p-5 border-b border-inherit">
             <div className="flex flex-col">
               <div className="flex items-center gap-3">
-                {/* LIVE PULSE INDICATOR */}
                 <div className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
@@ -184,7 +194,6 @@ export default function Features({ isDashboard = false, onTrade }) {
                   {activeSymbol.replace("USDT", "")} / USDT
                 </h1>
                 
-                {/* TEXT-BASED TOGGLE */}
                 <div className="flex items-center bg-black/10 dark:bg-white/5 p-1 rounded-sm border border-white/5">
                   <button 
                     onClick={() => setChartType("area")}
@@ -269,8 +278,20 @@ export default function Features({ isDashboard = false, onTrade }) {
 
         {/* MARKET TABLE */}
         <div className={`rounded-sm border overflow-hidden ${isDark ? "bg-[#0b0e11] border-white/10" : "bg-white border-black/5"}`}>
-          <div className="p-4 border-b border-inherit flex flex-col md:flex-row gap-4 justify-between items-center">
-            <h2 className="text-sm font-bold uppercase tracking-widest opacity-60">Available Assets</h2>
+          <div className="p-4 border-b border-inherit flex flex-col md:flex-row gap-4 justify-between items-center overflow-hidden">
+            <div className="flex flex-col w-full md:w-auto">
+              <h2 className="text-sm font-bold uppercase tracking-widest opacity-60">Available Assets</h2>
+              
+              {/* ADDED: Horizontal sliding text for mobile users */}
+              <div className="md:hidden w-full overflow-hidden whitespace-nowrap mt-1 relative h-4">
+                <div className="absolute animate-table-hint">
+                  <span className="text-[9px] font-bold text-yellow-500/80 uppercase tracking-widest flex items-center gap-2">
+                    <ArrowRightLeft size={10} /> Slide horizontally to view full market metrics and actions
+                  </span>
+                </div>
+              </div>
+            </div>
+
             <input 
               type="text" placeholder="Filter Assets..."
               className={`w-full md:w-64 text-xs px-4 py-2 rounded-sm border outline-none ${isDark ? "bg-white/5 border-white/10 text-white" : "bg-gray-100 border-black/10 text-black"}`}
@@ -278,7 +299,8 @@ export default function Features({ isDashboard = false, onTrade }) {
             />
           </div>
 
-          <div className="overflow-x-auto">
+          {/* ADDED: custom-scrollbar class for better visibility */}
+          <div className="overflow-x-auto custom-scrollbar">
             <table className="w-full text-left min-w-[1000px] border-collapse">
               <thead className={`text-[10px] uppercase font-black opacity-40 ${isDark ? "bg-white/5" : "bg-gray-50"}`}>
                 <tr>
