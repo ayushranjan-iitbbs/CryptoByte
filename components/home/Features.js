@@ -317,7 +317,7 @@ export default function Features({ isDashboard = false, onTrade }) {
                       
                       <td className="p-4 text-center">
                         <button onClick={() => handleAnalyze(coin.symbol)} className={`text-[9px] px-3 py-1 rounded-sm font-black uppercase transition-all ${isActive ? "bg-emerald-500 text-white" : "border border-inherit hover:border-yellow-500"}`}>
-                          View Chart
+                          Analyze
                         </button>
                       </td>
                       <td className="p-4 text-right w-px whitespace-nowrap">
