@@ -128,7 +128,7 @@ export default function Hero() {
 
         
           <button 
-            onClick={() => !user ? router.push("/trade") : router.push("/ai-trading")}
+            onClick={() => !user ? router.push("/ai-insights") : router.push("/ai-trading")}
             className={`w-full sm:w-auto px-8 py-4 rounded-md border font-black uppercase tracking-widest text-[11px] transition-all
               ${isDark ? "border-white/10 bg-white/5 hover:bg-white/10 text-white" : "border-slate-300 bg-white hover:bg-slate-50 text-slate-900"}`}
           >
