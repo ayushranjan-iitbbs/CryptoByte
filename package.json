@@ -9,9 +9,25 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@ai-sdk/groq": "^3.0.31",
+    "@google/generative-ai": "^0.24.1",
+    "@supabase/auth-helpers-nextjs": "^0.15.0",
+    "@supabase/supabase-js": "^2.99.3",
+    "ai": "^6.0.134",
+    "framer-motion": "^12.38.0",
+    "groq-sdk": "^1.1.1",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.7",
+    "lightweight-charts": "^5.1.0",
+    "lucide-react": "^0.577.0",
     "next": "16.2.1",
+    "openai": "^6.32.0",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "recharts": "^3.8.0",
+    "resend": "^6.9.4",
+    "swr": "^2.4.1",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
